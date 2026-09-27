@@ -4,15 +4,13 @@ Hey! I wanted to build something practical that solves an actual problem in Rong
 
 It's a complete, single-file parking management web app powered by SQLite running right inside your browser!
 
----
-
 ## What does it do?
 
 The app lets parking attendants track and manage parking spot availability in real time:
 
 * **Visual Grid Layout**: Displays 10 parking spots with clear visual status (Green = Free, Red = Occupied).
 * **Live Spot Check-In**: Assign an incoming vehicle's license plate to any open spot with an `INSERT` statement.
-* **Auto Fee Calculation**: Select an occupied spot to check out a vehicle. The app calculates hours parked and charges **$2.00/hr** (minimum 1 hour).
+* **Auto Fee Calculation**: Select an occupied spot to check out a vehicle. The app calculates hours parked and charges **KSH200.00/hr** (minimum 1 hour).
 * **SQLite Inspector**: Switch between viewing raw `spots` and `vehicles` tables to see real-time updates to the database.
 * **Live Terminal Console**: Shows every SQL query (`CREATE`, `INSERT`, `UPDATE`, `LEFT JOIN`) executed under the hood as you interact with the app.
 
