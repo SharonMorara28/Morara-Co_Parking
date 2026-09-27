@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Project Title-->
+    <title>Morara&Co</title>
+    
+    <!-- Tailwind CSS CDN for easy styling so I don't have to write 500 lines of CSS manually -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- SQL.js library to run SQLite right inside the browser -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+    
+    <!-- FontAwesome for car and database icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        /* Custom styles added by me */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0f172a; /* dark blue background looks cool */
+            color: #f8fafc;
+        }
+        
+        /* Monospace font for SQL log so it looks like a real terminal */
+        .terminal-font {
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        /* Green background for available parking spots */
+        .spot-available {
+            border: 2px solid #22c55e;
+            background-color: rgba(34, 197, 94, 0.12);
+        }
+        
+        .spot-available:hover {
+            background-color: rgba(34, 197, 94, 0.25);
+            transform: translateY(-2px); /* nice little pop effect on hover */
+        }
+
+        /* Red background for occupied parking spots */
+        .spot-occupied {
+            border: 2px solid #ef4444;
+            background-color: rgba(239, 68, 68, 0.15);
+        }
+
+        .spot-occupied:hover {
+            background-color: rgba(239, 68, 68, 0.3);
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between">
+
+    <!-- Top Navigation / Header -->
+    <header class="bg-slate-900 border-b border-slate-800 p-4">
+        <div class="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-3">
+            <div class="flex items-center gap-3">
+                <div class="p-2 bg-blue-600 rounded-lg">
+                    <i class="fa-solid fa-car text-xl text-white"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold text-white">Morara&Co Parking Management System</h1>
+                    <!-- Friendly student project tag -->
+                    <p class="text-xs text-blue-400 terminal-font">Morara&Co</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-3">
+                <!-- Status badge showing if SQLite loaded fine -->
+                <span id="db-status-badge" class="px-3 py-1 text-xs rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    <i class="fa-solid fa-spinner animate-spin mr-1"></i> Loading SQLite database...
+                </span>
+                
+                <!-- Reset DB button in case something breaks during demo -->
+                <button onclick="resetWholeDatabase()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-lg border border-slate-700 transition">
+                    <i class="fa-solid fa-rotate-right mr-1"></i> Reset DB
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="max-w-7xl mx-auto w-full p-4 md:p-6 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- LEFT SIDE: Parking lot grid and database tables (7 columns) -->
+        <div class="lg:col-span-7 flex flex-col gap-6">
+
+            <!-- Stats Bar -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div class="bg-slate-800 p-3 rounded-xl border border-slate-700">
+                    <p class="text-xs text-slate-400 uppercase font-bold">Total Spots</p>
+                    <p id="total-spots-count" class="text-2xl font-bold text-white mt-1">10</p>
+                </div>
+                <div class="bg-slate-800 p-3 rounded-xl border border-slate-700">
+                    <p class="text-xs text-emerald-400 uppercase font-bold">Available</p>
+                    <p id="available-spots-count" class="text-2xl font-bold text-emerald-400 mt-1">0</p>
+                </div>
+                <div class="bg-slate-800 p-3 rounded-xl border border-slate-700">
+                    <p class="text-xs text-rose-400 uppercase font-bold">Occupied</p>
+                    <p id="occupied-spots-count" class="text-2xl font-bold text-rose-400 mt-1">0</p>
+                </div>
+                <div class="bg-slate-800 p-3 rounded-xl border border-slate-700">
+                    <p class="text-xs text-blue-400 uppercase font-bold">Rate</p>
+                    <p class="text-2xl font-bold text-blue-300 mt-1">ksh2.00<span class="text-xs font-normal text-slate-400">/hr</span></p>
+                </div>
+            </div>
+
+            <!-- Parking Grid Visualization -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg">
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-base font-bold text-slate-200 flex items-center gap-2">
+                        <i class="fa-solid fa-square-parking text-blue-400"></i> Parking Lot Grid Layout
+                    </h2>
+                    <span class="text-xs text-slate-400">// Click any spot to select it</span>
+                </div>
+                
+                <!-- The JS dynamically populates this grid -->
+                <div id="parking-grid-container" class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                    <!-- Spot cards will be added here -->
+                </div>
+            </div>
+
+            <!-- Live Database Tables View -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg">
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-base font-bold text-slate-200 flex items-center gap-2">
+                        <i class="fa-solid fa-table text-amber-400"></i> SQLite Table Viewer
+                    </h2>
+                    <!-- Toggle buttons to view spots table or vehicles table -->
+                    <div class="flex bg-slate-800 p-1 rounded-lg border border-slate-700">
+                        <button id="show-spots-btn" onclick="showTable('spots')" class="px-3 py-1 text-xs font-bold rounded-md bg-blue-600 text-white transition">
+                            spots Table
+                        </button>
+                        <button id="show-vehicles-btn" onclick="showTable('vehicles')" class="px-3 py-1 text-xs font-bold rounded-md text-slate-400 hover:text-white transition">
+                            vehicles Table
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Database Table Container -->
+                <div class="overflow-x-auto max-h-48 rounded-lg border border-slate-800 bg-slate-950/70">
+                    <table id="sqlite-data-table" class="w-full text-xs text-left text-slate-300 terminal-font">
+                        <thead class="text-xs text-slate-400 uppercase bg-slate-800 sticky top-0">
+                            <!-- JS populates table headers -->
+                        </thead>
+                        <tbody class="divide-y divide-slate-800">
+                            <!-- JS populates table rows -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- RIGHT SIDE: Check-In and Check-Out Forms -->
+        <div class="lg:col-span-5 flex flex-col gap-6">
+
+            <!-- Check-In Form Card -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg">
+                <h2 class="text-base font-bold text-slate-200 mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-right-to-bracket text-emerald-400"></i> Check-In Vehicle
+                </h2>
+                
+                <form id="checkin-form" onsubmit="handleCheckInSubmit(event)" class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-400 uppercase mb-1">Select Spot Number</label>
+                        <select id="checkin-spot-id" required class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-blue-500">
+                            <option value="">-- Choose Spot --</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-400 uppercase mb-1">License Plate Number</label>
+                        <input type="text" id="checkin-license-plate" placeholder="e.g. ABC-1234" required class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white uppercase focus:outline-none focus:border-blue-500">
+                    </div>
+
+                    <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-lg text-sm transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-check"></i> Park Vehicle (INSERT SQL)
+                    </button>
+                </form>
+            </div>
+
+            <!-- Check-Out / Selected Spot Details Card -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg flex-1 flex flex-col justify-between">
+                <div>
+                    <h2 class="text-base font-bold text-slate-200 mb-2 flex items-center gap-2">
+                        <i class="fa-solid fa-receipt text-blue-400"></i> Selected Spot Details / Check-Out
+                    </h2>
+                    <p class="text-xs text-slate-400 mb-4">// Select an occupied spot to view details and calculate total fee</p>
+
+                    <!-- Details Display Box -->
+                    <div id="spot-info-box" class="bg-slate-950/80 border border-slate-800 rounded-lg p-4 text-xs space-y-2">
+                        <p class="text-slate-500 italic text-center py-4">No spot selected yet. Click any spot in the grid above!</p>
+                    </div>
+                </div>
+
+                <!-- Check-Out Button Container -->
+                <div id="checkout-action-container" class="mt-4">
+                    <!-- Dynamic check-out button goes here -->
+                </div>
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- Real-time SQL Console -->
+    <footer class="bg-slate-950 border-t border-slate-800 p-4">
+        <div class="max-w-7xl mx-auto">
+            <div class="flex justify-between items-center mb-2">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-400 terminal-font flex items-center gap-2">
+                    <i class="fa-solid fa-terminal text-emerald-400"></i> Live SQLite Query Console Log
+                </span>
+                <button onclick="clearConsoleLog()" class="text-xs text-slate-500 hover:text-slate-300 underline">
+                    Clear Log
+                </button>
+            </div>
+            
+            <!-- Terminal Output Box -->
+            <div id="sql-console-log" class="bg-slate-900 border border-slate-800 rounded-lg p-3 text-xs terminal-font h-28 overflow-y-auto space-y-1">
+                <div class="text-slate-500">// Console initialized. Waiting for database queries...</div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        //Uses sql.js to create an in-memory SQLite database in browser.
+
+        // Global variables (keeps things simple)
+        let db = null;                 // SQLite database object
+        let totalParkingSpots = 10;    // Number of spots in our campus lot
+        let activeTableTab = 'spots'; // Which database table user is currently viewing
+        let selectedSpotId = null;    // Spot ID currently clicked by user
+
+        // Initializer function called when page loads
+        async function initializeApp() {
+            logConsoleComment("Initializing CS101 Parking System application...");
+
+            try {
+                // Initialize sql.js WebAssembly engine from CDN
+                const SQL = await initSqlJs({
+                    locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
+                });
+
+                // Create a new empty SQLite database in browser memory
+                db = new SQL.Database();
+                logConsoleComment("SQLite database successfully created in browser memory!");
+
+                // Update status badge on top right
+                const statusBadge = document.getElementById('db-status-badge');
+                statusBadge.className = "px-3 py-1 text-xs rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+                statusBadge.innerHTML = `<i class="fa-solid fa-circle text-[8px] text-emerald-400 mr-1"></i> SQLite Active`;
+
+                // Set up table structures and initial seed data
+                createTables();
+                insertInitialSpots();
+                refreshEverything();
+
+            } catch (error) {
+                console.error("Oops! Database failed to load:", error);
+                logConsoleComment("ERROR: Could not load SQLite engine! Check console.");
+            }
+        }
+
+        // Helper function to run SQL and display it in the log console at the bottom
+        function runSqlQuery(sqlStatement) {
+            // Print the SQL query to log box so professor can see it working!
+            logSqlQueryText(sqlStatement);
+
+            try {
+                // Execute query using sql.js
+                return db.exec(sqlStatement);
+            } catch (err) {
+                logConsoleComment(`SQL ERROR: ${err.message}`);
+                console.error("SQL Error:", err);
+                return null;
+            }
+        }
+
+        // Log formatted SQL string to the footer console
+        function logSqlQueryText(queryText) {
+            const consoleBox = document.getElementById('sql-console-log');
+            const line = document.createElement('div');
+            
+            const timeString = new Date().toLocaleTimeString();
+            line.className = "text-emerald-400";
+            line.innerHTML = `<span class="text-blue-400">[${timeString}] SQL&gt;</span> ${queryText}`;
+            
+            consoleBox.appendChild(line);
+            consoleBox.scrollTop = consoleBox.scrollHeight; // Auto scroll down
+        }
+
+        // Log simple comment string to terminal
+        function logConsoleComment(commentText) {
+            const consoleBox = document.getElementById('sql-console-log');
+            const line = document.createElement('div');
+            line.className = "text-slate-500";
+            line.textContent = `// ${commentText}`;
+            consoleBox.appendChild(line);
+            consoleBox.scrollTop = consoleBox.scrollHeight;
+        }
+
+        // Clear terminal output
+        function clearConsoleLog() {
+            document.getElementById('sql-console-log').innerHTML = '<div class="text-slate-500">// Console cleared.</div>';
+        }
+
+        // DATABASE SETUP 
+        function createTables() {
+            logConsoleComment("Creating database schema tables...");
+
+            // Table 1: spots (tracks spot number and if occupied)
+            const createSpotsSql = `
+                CREATE TABLE IF NOT EXISTS spots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    spot_number INTEGER NOT NULL UNIQUE,
+                    is_occupied INTEGER DEFAULT 0
+                );
+            `;
+
+            // Table 2: vehicles (tracks vehicle details and entry/exit times)
+            const createVehiclesSql = `
+                CREATE TABLE IF NOT EXISTS vehicles (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    spot_id INTEGER NOT NULL,
+                    license_plate TEXT NOT NULL,
+                    entry_time TEXT NOT NULL,
+                    exit_time TEXT,
+                    total_fee REAL DEFAULT 0.0,
+                    FOREIGN KEY(spot_id) REFERENCES spots(id)
+                );
+            `;
+
+            runSqlQuery(createSpotsSql);
+            runSqlQuery(createVehiclesSql);
+        }
+
+        // Fill spots table with 10 spots if empty
+        function insertInitialSpots() {
+            const checkQuery = "SELECT COUNT(*) FROM spots;";
+            const result = db.exec(checkQuery);
+            const spotCount = result[0].values[0][0];
+
+            if (spotCount === 0) {
+                logConsoleComment(`Inserting ${totalParkingSpots} default parking spots into 'spots' table...`);
+                for (let i = 1; i <= totalParkingSpots; i++) {
+                    runSqlQuery(`INSERT INTO spots (spot_number, is_occupied) VALUES (${i}, 0);`);
+                }
+            }
+        }
+
+        // Reset database button function
+        function resetWholeDatabase() {
+            logConsoleComment("Resetting database back to initial state...");
+            runSqlQuery("DROP TABLE IF EXISTS vehicles;");
+            runSqlQuery("DROP TABLE IF EXISTS spots;");
+            createTables();
+            insertInitialSpots();
+            selectedSpotId = null;
+            refreshEverything();
+        }
+
+        // Master function to update UI after any database change
+        function refreshEverything() {
+            updateSpotCounts();
+            renderGrid();
+            populateSpotDropdown();
+            renderTableInspector();
+            renderSelectedSpotBox();
+        }
+        // UI COMPUTATIONS AND RENDERERS
+
+        // Count available and occupied spots
+        function updateSpotCounts() {
+            const totalRes = db.exec("SELECT COUNT(*) FROM spots;");
+            const availRes = db.exec("SELECT COUNT(*) FROM spots WHERE is_occupied = 0;");
+            const occRes = db.exec("SELECT COUNT(*) FROM spots WHERE is_occupied = 1;");
+
+            const total = totalRes[0].values[0][0];
+            const available = availRes[0].values[0][0];
+            const occupied = occRes[0].values[0][0];
+
+            document.getElementById('total-spots-count').innerText = total;
+            document.getElementById('available-spots-count').innerText = available;
+            document.getElementById('occupied-spots-count').innerText = occupied;
+        }
+
+        // Render visual grid of 10 spots
+        function renderGrid() {
+            const gridContainer = document.getElementById('parking-grid-container');
+            gridContainer.innerHTML = '';
+
+            // Query spots table along with active vehicle plate using LEFT JOIN
+            const sqlQuery = `
+                SELECT 
+                    s.id, 
+                    s.spot_number, 
+                    s.is_occupied, 
+                    v.license_plate 
+                FROM spots s 
+                LEFT JOIN vehicles v ON s.id = v.spot_id AND v.exit_time IS NULL 
+                ORDER BY s.spot_number ASC;
+            `;
+
+            const results = db.exec(sqlQuery);
+            if (!results.length) return;
+
+            const rows = results[0].values;
+
+            rows.forEach(row => {
+                const [id, spotNumber, isOccupied, plate] = row;
+                const spotCard = document.createElement('div');
+                
+                // Highlight if selected
+                const isSelected = selectedSpotId === id;
+                const activeRing = isSelected ? 'ring-2 ring-blue-400 scale-[1.02]' : '';
+
+                spotCard.onclick = () => selectSpot(id);
+                spotCard.className = `p-3 rounded-xl cursor-pointer transition flex flex-col justify-between h-24 ${isOccupied ? 'spot-occupied' : 'spot-available'} ${activeRing}`;
+
+                spotCard.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <span class="font-bold text-xs terminal-font">SPOT ${spotNumber}</span>
+                        <span class="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${isOccupied ? 'bg-rose-500/20 text-rose-300' : 'bg-emerald-500/20 text-emerald-300'}">
+                            ${isOccupied ? 'BUSY' : 'FREE'}
+                        </span>
+                    </div>
+                    <div class="text-center my-auto">
+                        ${isOccupied ? 
+                            `<i class="fa-solid fa-car text-xl text-rose-400 mb-0.5"></i>
+                             <p class="text-[11px] font-bold terminal-font text-slate-100">${plate || 'PARKED'}</p>` : 
+                            `<i class="fa-solid fa-square-parking text-xl text-emerald-400/50"></i>`
+                        }
+                    </div>
+                `;
+
+                gridContainer.appendChild(spotCard);
+            });
+        }
+
+        // Populate dropdown menu in check-in form with only available spots
+        function populateSpotDropdown() {
+            const selectElem = document.getElementById('checkin-spot-id');
+            selectElem.innerHTML = '<option value="">-- Choose Spot --</option>';
+
+            const sql = "SELECT id, spot_number FROM spots WHERE is_occupied = 0 ORDER BY spot_number ASC;";
+            const res = db.exec(sql);
+
+            if (res.length > 0) {
+                res[0].values.forEach(row => {
+                    const [id, spotNum] = row;
+                    const option = document.createElement('option');
+                    option.value = id;
+                    option.textContent = `Spot #${spotNum}`;
+                    selectElem.appendChild(option);
+                });
+            }
+        }
+
+        // When user clicks a spot on grid
+        function selectSpot(spotId) {
+            selectedSpotId = spotId;
+
+            // Also auto-select in check-in form if available
+            const checkinDropdown = document.getElementById('checkin-spot-id');
+            if (checkinDropdown) {
+                checkinDropdown.value = spotId;
+            }
+
+            refreshEverything();
+        }
+
+        // FORM ACTIONS: CHECK-IN & CHECK-OUT
+        // Handle Check-In Form Submit
+        function handleCheckInSubmit(event) {
+            event.preventDefault(); // Prevent page refresh!
+
+            const spotId = document.getElementById('checkin-spot-id').value;
+            const licensePlate = document.getElementById('checkin-license-plate').value.trim().toUpperCase();
+
+            if (!spotId || !licensePlate) {
+                alert("Please enter license plate and select a spot!");
+                return;
+            }
+
+            // Current timestamp string
+            const nowString = new Date().toISOString().replace('T', ' ').substring(0, 19);
+
+            // 1. Insert vehicle into vehicles table
+            const insertVehicleSql = `
+                INSERT INTO vehicles (spot_id, license_plate, entry_time) 
+                VALUES (${spotId}, '${licensePlate}', '${nowString}');
+            `;
+            runSqlQuery(insertVehicleSql);
+
+            // 2. Update spot status to occupied (1)
+            const updateSpotSql = `UPDATE spots SET is_occupied = 1 WHERE id = ${spotId};`;
+            runSqlQuery(updateSpotSql);
+
+            // Reset form fields
+            document.getElementById('checkin-form').reset();
+            selectedSpotId = parseInt(spotId);
+            refreshEverything();
+        }
+
+        // Simple function to calculate parking fee: $2 per hour, minimum $2
+        function calculateParkingFee(entryTimeString) {
+            const entryTime = new Date(entryTimeString);
+            const now = new Date();
+
+            // Difference in hours
+            const diffInMs = now - entryTime;
+            const diffInHours = diffInMs / (1000 * 60 * 60);
+
+            // Round up to nearest full hour, minimum 1 hour
+            const hoursToCharge = Math.max(1, Math.ceil(diffInHours));
+            
+            // Rate is $2 per hour
+            const totalFee = hoursToCharge * 2.0;
+
+            return {
+                hours: hoursToCharge,
+                fee: totalFee.toFixed(2)
+            };
+        }
+
+        // Render spot details inside details box
+        function renderSelectedSpotBox() {
+            const infoBox = document.getElementById('spot-info-box');
+            const actionContainer = document.getElementById('checkout-action-container');
+
+            if (!selectedSpotId) {
+                infoBox.innerHTML = `<p class="text-slate-500 italic text-center py-4">No spot selected yet. Click any spot in the grid above!</p>`;
+                actionContainer.innerHTML = '';
+                return;
+            }
+
+            // Get spot details & vehicle details if occupied
+            const sqlQuery = `
+                SELECT 
+                    s.id, 
+                    s.spot_number, 
+                    s.is_occupied, 
+                    v.id AS vehicle_id, 
+                    v.license_plate, 
+                    v.entry_time 
+                FROM spots s 
+                LEFT JOIN vehicles v ON s.id = v.spot_id AND v.exit_time IS NULL 
+                WHERE s.id = ${selectedSpotId};
+            `;
+
+            const res = db.exec(sqlQuery);
+            if (!res.length) return;
+
+            const [id, spotNumber, isOccupied, vehicleId, plate, entryTime] = res[0].values[0];
+
+            if (isOccupied === 0) {
+                // Spot is empty
+                infoBox.innerHTML = `
+                    <div class="flex justify-between border-b border-slate-800 pb-2">
+                        <span class="text-slate-400">Selected Spot:</span>
+                        <span class="font-bold text-emerald-400 terminal-font">Spot #${spotNumber}</span>
+                    </div>
+                    <div class="flex justify-between pt-1">
+                        <span class="text-slate-400">Status:</span>
+                        <span class="font-bold text-emerald-400">AVAILABLE</span>
+                    </div>
+                `;
+                actionContainer.innerHTML = `
+                    <button disabled class="w-full bg-slate-800 text-slate-500 font-bold py-2 rounded-lg text-xs cursor-not-allowed">
+                        Spot is empty (No vehicle to check out)
+                    </button>
+                `;
+            } else {
+                // Spot is occupied - calculate fee!
+                const feeData = calculateParkingFee(entryTime);
+
+                infoBox.innerHTML = `
+                    <div class="space-y-2 text-xs">
+                        <div class="flex justify-between border-b border-slate-800 pb-1">
+                            <span class="text-slate-400">Spot Number:</span>
+                            <span class="font-bold text-blue-300 terminal-font">Spot #${spotNumber}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">License Plate:</span>
+                            <span class="font-bold text-white terminal-font">${plate}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">Entry Timestamp:</span>
+                            <span class="text-slate-300 terminal-font text-[11px]">${entryTime}</span>
+                        </div>
+                        <div class="flex justify-between pt-2 border-t border-slate-800">
+                            <span class="text-slate-400">Total Due ($2/hr):</span>
+                            <span class="font-bold text-emerald-400 text-sm terminal-font">$${feeData.fee} (${feeData.hours} hr)</span>
+                        </div>
+                    </div>
+                `;
+
+                actionContainer.innerHTML = `
+                    <button onclick="handleCheckOutSubmit(${vehicleId}, ${id}, ${feeData.fee})" class="w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-2.5 rounded-lg text-sm transition shadow-lg flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-right-from-bracket"></i> Check-Out & Pay $${feeData.fee}
+                    </button>
+                `;
+            }
+        }
+
+        // Process Checkout and update database
+        function handleCheckOutSubmit(vehicleId, spotId, fee) {
+            const exitTimeNow = new Date().toISOString().replace('T', ' ').substring(0, 19);
+
+            // 1. Update vehicle record with exit_time and total_fee
+            const updateVehicleSql = `
+                UPDATE vehicles 
+                SET exit_time = '${exitTimeNow}', total_fee = ${fee} 
+                WHERE id = ${vehicleId};
+            `;
+            runSqlQuery(updateVehicleSql);
+
+            // 2. Mark spot as available again (0)
+            const updateSpotSql = `UPDATE spots SET is_occupied = 0 WHERE id = ${spotId};`;
+            runSqlQuery(updateSpotSql);
+
+            logConsoleComment(`Vehicle checked out successfully. Paid $${fee}`);
+
+            selectedSpotId = null;
+            refreshEverything();
+        }
+
+        // RAW DATABASE TABLE INSPECTOR VIEW
+
+        function showTable(tableName) {
+            activeTableTab = tableName;
+
+            const spotsBtn = document.getElementById('show-spots-btn');
+            const vehiclesBtn = document.getElementById('show-vehicles-btn');
+
+            if (tableName === 'spots') {
+                spotsBtn.className = "px-3 py-1 text-xs font-bold rounded-md bg-blue-600 text-white transition";
+                vehiclesBtn.className = "px-3 py-1 text-xs font-bold rounded-md text-slate-400 hover:text-white transition";
+            } else {
+                vehiclesBtn.className = "px-3 py-1 text-xs font-bold rounded-md bg-blue-600 text-white transition";
+                spotsBtn.className = "px-3 py-1 text-xs font-bold rounded-md text-slate-400 hover:text-white transition";
+            }
+
+            renderTableInspector();
+        }
+
+        // Render raw SQLite query output into HTML table
+        function renderTableInspector() {
+            const table = document.getElementById('sqlite-data-table');
+            const thead = table.querySelector('thead');
+            const tbody = table.querySelector('tbody');
+
+            thead.innerHTML = '';
+            tbody.innerHTML = '';
+
+            const sqlQuery = `SELECT * FROM ${activeTableTab};`;
+            const result = db.exec(sqlQuery);
+
+            if (!result.length || !result[0].values.length) {
+                tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-500 italic">Table "${activeTableTab}" is empty.</td></tr>`;
+                return;
+            }
+
+            const columns = result[0].columns;
+            const rows = result[0].values;
+
+            // Generate header columns dynamically
+            let headerRowHtml = '<tr>';
+            columns.forEach(colName => {
+                headerRowHtml += `<th class="px-3 py-2 border-b border-slate-700">${colName}</th>`;
+            });
+            headerRowHtml += '</tr>';
+            thead.innerHTML = headerRowHtml;
+
+            // Generate table data rows
+            rows.forEach(row => {
+                let bodyRowHtml = '<tr class="hover:bg-slate-800/50 transition">';
+                row.forEach(value => {
+                    bodyRowHtml += `<td class="px-3 py-2 border-b border-slate-800">${value === null ? 'NULL' : value}</td>`;
+                });
+                bodyRowHtml += '</tr>';
+                tbody.innerHTML += bodyRowHtml;
+            });
+        }
+
+        // Start the application when window finishes loading
+        window.onload = function() {
+            initializeApp();
+        };
+    </script>
+</body>
+</html>
