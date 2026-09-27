@@ -1,4 +1,4 @@
-# Morara&Co Parking Management System 🚗
+# Morara&Co Parking Management System 
 
 Hey! I wanted to build something practical that solves an actual problem in Rongai Area in Kajiado.
 
